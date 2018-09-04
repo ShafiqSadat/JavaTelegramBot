@@ -15,6 +15,9 @@ public class MainClass {
             System.out.println("Please enter your bot token : ");
             token = scanner.nextLine();
             redis.set("PMResanTokEn",token);
+            System.out.println("Enter admin userID : ");
+            var userID = scanner.nextLine();
+            redis.sadd("PmAdmins",userID);
         }
         if (redis.get("PMResanUserName")==null){
             System.out.println("Please enter your bot username without @ : ");
