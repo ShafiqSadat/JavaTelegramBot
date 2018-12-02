@@ -99,20 +99,7 @@ public class PMResan extends TelegramLongPollingBot {
                     }
                 }
                 else {
-                    if (CheckUser(update, fromID)) return;
-                    SendMessage sendMessage = new SendMessage()
-                            .setReplyToMessageId(update.getMessage().getMessageId())
-                            .setChatId(String.valueOf(fromID))
-                            .setText("♻️ پاسخ سیستم \uD83D\uDC47\n" +
-                                    "\n" +
-                                    "پیام شما با موفقیت به پشتیبانی ارسال شد منتظر جواب باشید و از ارسال پیام تکراری خود داری کنید !");
-                    try {
-                        execute(sendMessage);
-                    } catch (TelegramApiException e) {
-                        e.printStackTrace();
-                    } finally {
-                        redis.set("PmLastMessageID" + fromID, String.valueOf(update.getMessage().getMessageId()));
-                    }
+                    SystemAns(update, fromID);
                 }
             }
             else if (update.getMessage().hasText() && isAdmin(update.getMessage().getChatId())&&redis.get("waitForProfileText")!=null){
@@ -140,42 +127,28 @@ public class PMResan extends TelegramLongPollingBot {
         else if (update.hasMessage() && update.getMessage().hasPhoto()|update.getMessage().hasAnimation()|update.getMessage().hasContact()|update.getMessage().hasDocument()|update.getMessage().hasLocation()|update.getMessage().hasVideo()|update.getMessage().hasVideoNote()&&!isAdmin(update.getMessage().getChatId())){
             var fromID = update.getMessage().getFrom().getId();
             ReplyMessage(update, fromID);
-            if (CheckUser(update, fromID)) return;
-            SendMessage sendMessage = new SendMessage()
-                    .setReplyToMessageId(update.getMessage().getMessageId())
-                    .setChatId(String.valueOf(fromID))
-                    .setText("♻️ پاسخ سیستم \uD83D\uDC47\n" +
-                            "\n" +
-                            "پیام شما با موفقیت به پشتیبانی ارسال شد منتظر جواب باشید و از ارسال پیام تکراری خود داری کنید !");
-            try {
-                execute(sendMessage);
-            } catch (TelegramApiException e) {
-                e.printStackTrace();
-            } finally {
-                redis.set("PmLastMessageID" + fromID, String.valueOf(update.getMessage().getMessageId()));
-            }
+            SystemAns(update, fromID);
         }
         else if (update.hasMessage() && update.getMessage().hasSticker()&&!isAdmin(update.getMessage().getChatId())){
             var fromID = update.getMessage().getFrom().getId();
             ReplyMessage(update, fromID);
-            if (CheckUser(update, fromID)){
-                return;
-            }
-            SendMessage sendMessage = new SendMessage()
-                    .setReplyToMessageId(update.getMessage().getMessageId())
-                    .setChatId(String.valueOf(fromID))
-                    .setText("♻️ پاسخ سیستم \uD83D\uDC47\n" +
-                            "\n" +
-                            "پیام شما با موفقیت به پشتیبانی ارسال شد منتظر جواب باشید و از ارسال پیام تکراری خود داری کنید !");
-            try {
-                execute(sendMessage);
-                for (String admin : redis.smembers("PmAdmins")) {
-                    sendMessageText("استیکر ارسال شده از طرف "+"["+update.getMessage().getFrom().getFirstName()+"](tg://user?id="+update.getMessage().getFrom().getId()+")",Long.parseLong(admin));
+            if (CheckUser(update, fromID)&&redis.get("userHaveSupport"+fromID)!=null) {
+                SendMessage sendMessage = new SendMessage()
+                        .setReplyToMessageId(update.getMessage().getMessageId())
+                        .setChatId(String.valueOf(fromID))
+                        .setText("♻️ پاسخ سیستم \uD83D\uDC47\n" +
+                                "\n" +
+                                "پیام شما با موفقیت به پشتیبانی ارسال شد منتظر جواب باشید و از ارسال پیام تکراری خود داری کنید !");
+                try {
+                    execute(sendMessage);
+                    for (String admin : redis.smembers("PmAdmins")) {
+                        sendMessageText("استیکر ارسال شده از طرف " + "[" + update.getMessage().getFrom().getFirstName() + "](tg://user?id=" + update.getMessage().getFrom().getId() + ")", Long.parseLong(admin));
+                    }
+                } catch (TelegramApiException e) {
+                    e.printStackTrace();
+                } finally {
+                    redis.set("PmLastMessageID" + fromID, String.valueOf(update.getMessage().getMessageId()));
                 }
-            } catch (TelegramApiException e) {
-                e.printStackTrace();
-            } finally {
-                redis.set("PmLastMessageID" + fromID, String.valueOf(update.getMessage().getMessageId()));
             }
         }
         else if(update.hasCallbackQuery()){
@@ -183,6 +156,10 @@ public class PMResan extends TelegramLongPollingBot {
             var fromID = update.getCallbackQuery().getFrom().getId();
             var chatID = update.getCallbackQuery().getMessage().getChatId();
             if (callBack.equals("support")){
+                if(redis.get("userHaveSupport"+fromID)!=null){
+                    sendMessageText("شما یکبار درخواست پشتیبانی ارسال کردید !\nمنتظر تائید باشید و از ارسال درخواست های مکرر خود داری !",chatID);
+                    return;
+                }
                 EditMessageText editMessageText = new EditMessageText()
                         .setText("درخواست پشتیبانی شما ارسال متنظر تائید از طرف تیم باشید !")
                         .setChatId(chatID)
@@ -191,8 +168,10 @@ public class PMResan extends TelegramLongPollingBot {
                 List<List<InlineKeyboardButton>> rows = new ArrayList<>();
                 List<InlineKeyboardButton> row1 = new ArrayList<>();
                 List<InlineKeyboardButton> row2 = new ArrayList<>();
+                List<InlineKeyboardButton> row3 = new ArrayList<>();
                 row1.add(new InlineKeyboardButton().setText("تائید ✅").setCallbackData("accept"+fromID));
                 row2.add(new InlineKeyboardButton().setText("رد ❌").setCallbackData("reject"+fromID));
+                row2.add(new InlineKeyboardButton().setText("بلاک ⛔️").setCallbackData("block"+fromID));
                 rows.add(row1);
                 rows.add(row2);
                 inlineKeyboardMarkup.setKeyboard(rows);
@@ -328,7 +307,20 @@ public class PMResan extends TelegramLongPollingBot {
                     e.printStackTrace();
                 }
             }
-
+            else if (callBack.contains("block")){
+                var userid = callBack.replaceAll("block","");
+                sendMessageText("درخواست پشتیبانی شما رد شد!\n و شما بلاک شدید هررررری \uD83D\uDD95\uD83D\uDD95\uD83D\uDD95",Integer.parseInt(userid));
+                redis.sadd("PMBlockedUsers",userid);
+                EditMessageText editMessageText = new EditMessageText()
+                        .setMessageId(update.getCallbackQuery().getMessage().getMessageId())
+                        .setChatId(chatID)
+                        .setText("کاربر مورد نظر بلاک شد ! !\n");
+                try {
+                    execute(editMessageText);
+                } catch (TelegramApiException e) {
+                    e.printStackTrace();
+                }
+            }
             else if (callBack.contains("reject")){
                 var userid = callBack.replaceAll("reject","");
                 sendMessageText("درخواست پشتیبانی شما رد شد ❌\nلطفا بعدا درخواست بدهید و از ارسال درخواست های مکرر خودداری کنید !",Integer.parseInt(userid));
@@ -346,7 +338,29 @@ public class PMResan extends TelegramLongPollingBot {
         }
     }
 
+    private void SystemAns(Update update, Integer fromID) {
+        if (CheckUser(update, fromID)&&redis.get("userHaveSupport"+fromID)!=null) {
+            SendMessage sendMessage = new SendMessage()
+                    .setReplyToMessageId(update.getMessage().getMessageId())
+                    .setChatId(String.valueOf(fromID))
+                    .setText("♻️ پاسخ سیستم \uD83D\uDC47\n" +
+                            "\n" +
+                            "پیام شما با موفقیت به پشتیبانی ارسال شد منتظر جواب باشید و از ارسال پیام تکراری خود داری کنید !");
+            try {
+                execute(sendMessage);
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            } finally {
+                redis.set("PmLastMessageID" + fromID, String.valueOf(update.getMessage().getMessageId()));
+            }
+        }
+    }
+
     private boolean CheckUser(Update update, Integer fromID) {
+        if(redis.sismember("PMBlockedUsers", String.valueOf(fromID))){
+            sendMessageText("شما بلاک شده اید !\nهرررری \uD83D\uDD95\uD83D\uDD95\uD83D\uDD95\uD83D\uDD95\uD83D\uDD95",fromID);
+            return false;
+        }
         if (redis.get("userHaveSupport"+fromID)!=null){
             for (String admins : redis.smembers("PmAdmins")) {
                 forwardMessage(fromID, Long.parseLong(admins), update.getMessage().getMessageId());
@@ -354,9 +368,8 @@ public class PMResan extends TelegramLongPollingBot {
         }
         else {
             sendMessageText("شما درخواستی برای پشتیبانی ارسال نکردید !\nبرای درخواست پشتیبانی ربات را مجدد ارسال کنید و سپس روی دکمه درخواست پشتیبانی کلیک کنید \nبرای ادامه روی استارت کلیک کنید \n/start",update.getMessage().getChatId());
-            return true;
         }
-        return false;
+        return true;
     }
 
     private void ReplyMessage(Update update, Integer fromID) {
@@ -364,8 +377,25 @@ public class PMResan extends TelegramLongPollingBot {
             var touser = update.getMessage().getReplyToMessage().getForwardFrom().getId();
             SendMessage sendMessage = new SendMessage()
                     .setChatId(String.valueOf(touser))
-                    .setReplyToMessageId(Integer.valueOf(redis.get("PmLastMessageID"+touser)))
-                    .setText("♻️ پاسخ پشتیبانی \uD83D\uDC47 \n"+update.getMessage().getText());
+                    .setReplyToMessageId(Integer.valueOf(redis.get("PmLastMessageID"+touser)));
+            if(update.getMessage().getText().equals("ban")||update.getMessage().getText().equals("block")){
+                redis.sadd("PMBlockedUsers",String.valueOf(touser));
+                sendMessageText("شما بلاک شدید !\nهررررری \uD83D\uDD95\uD83D\uDD95\uD83D\uDD95\uD83D\uDD95\uD83D\uDD95",touser);
+                return;
+            }
+            if(update.getMessage().getText().equals("unblock")||update.getMessage().getText().equals("unban")){
+                sendMessageText("شما آنبلاک شدید !",touser);
+                redis.srem("PMBlockedUsers", String.valueOf(touser));
+                return;
+            }
+            if(update.getMessage().getText().equals("close")||update.getMessage().getText().equals("/close")){
+                redis.del("userHaveSupport"+touser);
+                sendMessageText("گفتگو از طرف پشتیبانی بسته شد !\nبرای ارتباط مجدد میتوانید مجدد درخواست بفرستید !",touser);
+                sendMessageText("انجام شد!",fromID);
+                return;
+            }
+            else
+                sendMessage.setText("♻️ پاسخ پشتیبانی \uD83D\uDC47 \n"+update.getMessage().getText());
             try {
                 execute(sendMessage);
                 sendMessage.setChatId(String.valueOf(fromID));
