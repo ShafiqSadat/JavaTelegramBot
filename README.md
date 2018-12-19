@@ -21,6 +21,6 @@
 
 
 
-`java -jar PMBot.java`
+`java -jar PMBot.jar`
 
 
